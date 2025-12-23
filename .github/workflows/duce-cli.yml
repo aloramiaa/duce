@@ -1,0 +1,78 @@
+name: Run Duce CLI
+
+on:
+  # Schedule to run every 24 hours (at midnight UTC)
+  schedule:
+    - cron: '0 0 * * *'
+  
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  run-duce-cli:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download Duce CLI executable
+        run: |
+          $url = "https://github.com/techtanic/Discounted-Udemy-Course-Enroller/releases/download/v2.3.6/DUCE-CLI-windows.exe"
+          $output = "duce-cli.exe"
+          Write-Host "Downloading Duce CLI from $url..."
+          Invoke-WebRequest -Uri $url -OutFile $output
+          Write-Host "Downloaded $output successfully"
+          if (Test-Path $output) {
+              $fileInfo = Get-Item $output
+              Write-Host "File size: $($fileInfo.Length) bytes"
+          }
+        shell: pwsh
+      
+      - name: Inject credentials into settings file
+        run: |
+          $settingsPath = "duce-cli-settings.json"
+          $settings = Get-Content $settingsPath | ConvertFrom-Json
+          $settings | Add-Member -MemberType NoteProperty -Name "email" -Value "${{ secrets.UDEMY_EMAIL }}" -Force
+          $settings | Add-Member -MemberType NoteProperty -Name "password" -Value "${{ secrets.UDEMY_PASSWORD }}" -Force
+          $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsPath
+        shell: pwsh
+      
+      - name: Run Duce CLI
+        run: |
+          Write-Host "=========================================="
+          Write-Host "Starting Duce CLI execution..."
+          Write-Host "Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+          Write-Host "=========================================="
+          Write-Host ""
+          
+          # Run the CLI - output will be automatically captured and displayed
+          & ".\duce-cli.exe" 2>&1 | ForEach-Object {
+              Write-Host $_
+          }
+          
+          $exitCode = $LASTEXITCODE
+          
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "Duce CLI execution completed"
+          Write-Host "Exit Code: $exitCode"
+          Write-Host "Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+          Write-Host "=========================================="
+          
+          if ($exitCode -ne 0) {
+              exit $exitCode
+          }
+        shell: pwsh
+      
+      - name: Upload results (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: duce-cli-results
+          path: |
+            *.txt
+            *.log
+          if-no-files-found: ignore
+          retention-days: 7
+
